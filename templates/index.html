@@ -1,0 +1,1159 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>YouTube-Claude Integration</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Vue.js -->
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
+    <!-- Axios for HTTP requests -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <!-- Bootstrap CSS for styling -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        .results-container {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .video-item {
+            transition: all 0.3s;
+            border-radius: 5px;
+        }
+
+        .video-item:hover {
+            background-color: #f8f9fa;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .loader {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(0, 0, 0, 0.3);
+            border-radius: 50%;
+            border-top-color: #c00;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .nav-tabs .nav-link.active {
+            color: #c00;
+            border-bottom: 2px solid #c00;
+        }
+
+        .truncate-text {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            line-clamp: 3; /* Add this line */
+            -webkit-box-orient: vertical;
+        }
+
+        [v-cloak] {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app" class="container py-4" v-cloak>
+        <!-- Header with user info -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="text-danger">YouTube-Claude Integration</h1>
+            <div class="user-info">
+                <span v-text="username"></span>
+                <a href="/logout" class="btn btn-outline-danger ms-2">Logout</a>
+            </div>
+        </div>
+
+        <!-- Navigation tabs -->
+        <ul class="nav nav-tabs mb-4">
+            <li class="nav-item">
+                <a class="nav-link" :class="{ active: activeTab === 'search' }" href="#"
+                    @click.prevent="activeTab = 'search'">Video Search</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" :class="{ active: activeTab === 'details' }" href="#"
+                    @click.prevent="activeTab = 'details'">Video Details</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" :class="{ active: activeTab === 'transcript' }" href="#"
+                    @click.prevent="activeTab = 'transcript'">Transcript</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" :class="{ active: activeTab === 'analyze' }" href="#"
+                    @click.prevent="activeTab = 'analyze'">Analyze Content</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" :class="{ active: activeTab === 'history' }" href="#"
+                    @click.prevent="activeTab = 'history'">Analysis History</a>
+            </li>
+
+            <li class="nav-item">
+                <a class="nav-link" :class="{ active: activeTab === 'channels' }" href="#"
+                    @click.prevent="activeTab = 'channels'">Channel Analysis</a>
+            </li>
+        </ul>
+
+        <!-- Video Search Section -->
+        <div v-if="activeTab === 'search'" class="tab-content">
+            <div class="mb-4">
+                <h2>Search YouTube Videos</h2>
+                <div class="input-group mb-3">
+                    <input type="text" class="form-control" v-model="videoSearchQuery" placeholder="Enter search query"
+                        @keyup.enter="searchVideos">
+                    <button class="btn btn-danger" @click="searchVideos" :disabled="isLoading">
+                        <span v-if="isLoading" class="loader me-2"></span>
+                        Search
+                    </button>
+                </div>
+
+                <!-- Advanced Search Options -->
+                <div class="mt-2">
+                    <a class="text-secondary" data-bs-toggle="collapse" href="#advancedSearch" role="button">
+                        Advanced Search Options <i class="fas fa-caret-down"></i>
+                    </a>
+                    <div class="collapse mt-2" id="advancedSearch">
+                        <div class="card card-body">
+                            <div class="row">
+                                <div class="col-md-6 mb-2">
+                                    <label class="form-label">Upload Date</label>
+                                    <select class="form-select" v-model="searchOptions.publishedAfter">
+                                        <option value="">Any time</option>
+                                        <option value="today">Today</option>
+                                        <option value="thisWeek">This week</option>
+                                        <option value="thisMonth">This month</option>
+                                        <option value="thisYear">This year</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6 mb-2">
+                                    <label class="form-label">Duration</label>
+                                    <select class="form-select" v-model="searchOptions.videoDuration">
+                                        <option value="">Any duration</option>
+                                        <option value="short">Short (< 4 minutes)</option>
+                                        <option value="medium">Medium (4-20 minutes)</option>
+                                        <option value="long">Long (> 20 minutes)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-2">
+                                    <label class="form-label">Sort By</label>
+                                    <select class="form-select" v-model="searchOptions.order">
+                                        <option value="relevance">Relevance</option>
+                                        <option value="date">Upload date</option>
+                                        <option value="viewCount">View count</option>
+                                        <option value="rating">Rating</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6 mb-2">
+                                    <label class="form-label">Results Per Page</label>
+                                    <select class="form-select" v-model="searchOptions.maxResults">
+                                        <option value="5">5</option>
+                                        <option value="10">10</option>
+                                        <option value="25">25</option>
+                                        <option value="50">50</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Custom Date Range -->
+                            <div class="row mt-2">
+                                <div class="col-md-6 mb-2">
+                                    <label class="form-label">Custom Date Range</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">From</span>
+                                        <input type="date" class="form-control" v-model="searchOptions.customDateFrom">
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-2">
+                                    <div class="input-group mt-md-4 mt-2">
+                                        <span class="input-group-text">To</span>
+                                        <input type="date" class="form-control" v-model="searchOptions.customDateTo">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-text text-muted mb-2">Custom date range will override the predefined date
+                                options if both are set.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="videos.length > 0" class="results-container">
+                <h3>Search Results</h3>
+                <div v-for="video in videos" :key="video.id" class="video-item card mb-3">
+                    <div class="row g-0">
+                        <div class="col-md-3">
+                            <img :src="video.thumbnail" class="img-fluid rounded-start" :alt="video.title">
+                        </div>
+                        <div class="col-md-9">
+                            <div class="card-body">
+                                <h5 class="card-title" v-text="video.title"></h5>
+                                <p class="card-text">
+                                    <small class="text-muted">Channel: <span v-text="video.channel"></span></small>
+                                </p>
+                                <p class="card-text truncate-text" v-text="video.description"></p>
+                                <p class="card-text"><small class="text-muted">ID: <span
+                                            v-text="video.id"></span></small></p>
+                                <div class="btn-group">
+                                    <button class="btn btn-sm btn-outline-primary" @click="copyVideoId(video.id)">Copy
+                                        ID</button>
+                                    <button class="btn btn-sm btn-outline-success"
+                                        @click="selectVideoForAnalysis(video)">Analyze</button>
+                                    <a :href="'https://www.youtube.com/watch?v=' + video.id" target="_blank"
+                                        class="btn btn-sm btn-outline-danger">Watch</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div v-else-if="videoSearchPerformed && !isLoading" class="alert alert-info">
+                No videos found for your search query.
+            </div>
+        </div>
+
+        <!-- Channel Analysis Section -->
+        <div v-if="activeTab === 'channels'" class="tab-content">
+            <div class="mb-4">
+                <h2>Channel Analysis</h2>
+                <div class="input-group mb-3">
+                    <input type="text" class="form-control" v-model="channelSearchQuery"
+                        placeholder="Search for YouTube channels" @keyup.enter="searchChannels">
+                    <button class="btn btn-danger" @click="searchChannels" :disabled="isLoadingChannels">
+                        <span v-if="isLoadingChannels" class="loader me-2"></span>
+                        Search Channels
+                    </button>
+                </div>
+            </div>
+        
+            <!-- Channel Search Results -->
+            <div v-if="channels.length > 0" class="results-container">
+                <h3>Channel Results</h3>
+                <div v-for="channel in channels" :key="channel.id" class="video-item card mb-3">
+                    <div class="row g-0">
+                        <div class="col-md-3">
+                            <img :src="channel.thumbnail" class="img-fluid rounded-start" :alt="channel.title">
+                        </div>
+                        <div class="col-md-9">
+                            <div class="card-body">
+                                <h5 class="card-title" v-text="channel.title"></h5>
+                                <p class="card-text truncate-text" v-text="channel.description"></p>
+                                <p class="card-text"><small class="text-muted">ID: <span v-text="channel.id"></span></small></p>
+                                <div class="btn-group">
+                                    <button class="btn btn-sm btn-outline-primary" @click="copyChannelId(channel.id)">Copy
+                                        ID</button>
+                                    <button class="btn btn-sm btn-outline-success"
+                                        @click="selectChannelForAnalysis(channel)">Analyze</button>
+                                    <a :href="'https://www.youtube.com/channel/' + channel.id" target="_blank"
+                                        class="btn btn-sm btn-outline-danger">Visit Channel</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        
+            <!-- Channel Details and Analysis -->
+            <div v-if="channelDetails" class="mt-4">
+                <div class="card mb-4">
+                    <div class="row g-0">
+                        <div class="col-md-3">
+                            <img :src="channelDetails.thumbnail" class="img-fluid rounded-start" :alt="channelDetails.title">
+                        </div>
+                        <div class="col-md-9">
+                            <div class="card-body">
+                                <h3 class="card-title" v-text="channelDetails.title"></h3>
+                                <p class="card-text"><strong>Created:</strong> <span
+                                        v-text="formatDate(channelDetails.created_at)"></span></p>
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <p class="card-text"><strong>Subscribers:</strong> <span
+                                                v-text="formatNumber(channelDetails.subscriber_count)"></span></p>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <p class="card-text"><strong>Videos:</strong> <span
+                                                v-text="formatNumber(channelDetails.video_count)"></span></p>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <p class="card-text"><strong>Views:</strong> <span
+                                                v-text="formatNumber(channelDetails.view_count)"></span></p>
+                                    </div>
+                                </div>
+                                <a :href="'https://www.youtube.com/channel/' + channelDetails.id" target="_blank"
+                                    class="btn btn-sm btn-outline-danger">Visit Channel</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body border-top">
+                        <h4>Description</h4>
+                        <p class="card-text" style="white-space: pre-wrap;" v-text="channelDetails.description"></p>
+                    </div>
+                </div>
+        
+                <!-- Channel Analysis Form -->
+                <div class="card mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <h4 class="mb-0">Analyze This Channel</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">Instructions for Claude</label>
+                            <textarea class="form-control" v-model="channelInstruction" rows="3"
+                                placeholder="E.g., 'Analyze the channel content and audience'"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Sample Size (number of recent videos to analyze)</label>
+                            <select class="form-select" v-model="channelVideoSampleSize">
+                                <option value="3">3 videos</option>
+                                <option value="5">5 videos</option>
+                                <option value="10">10 videos</option>
+                                <option value="15">15 videos</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" @click="analyzeChannel"
+                            :disabled="isAnalyzingChannel || !channelInstruction">
+                            <span v-if="isAnalyzingChannel">
+                                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                Analyzing...
+                            </span>
+                            <span v-else>Analyze with Claude</span>
+                        </button>
+                    </div>
+                </div>
+        
+                <!-- Channel Analysis Results -->
+                <div v-if="channelAnalysis" class="card">
+                    <div class="card-header bg-info text-white">
+                        <h4 class="mb-0">Channel Analysis Results</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <button class="btn btn-sm btn-outline-primary"
+                                @click="saveAnalysis('channel', channelDetails.id, channelInstruction, channelAnalysis)">Save
+                                Analysis</button>
+                        </div>
+                        <div v-html="formatAnalysis(channelAnalysis)"></div>
+                    </div>
+                </div>
+        
+                <!-- Channel Videos -->
+                <div v-if="channelVideos && channelVideos.length > 0" class="mt-4">
+                    <h4>Recent Videos</h4>
+                    <div class="row">
+                        <div v-for="video in channelVideos" :key="video.id" class="col-md-4 mb-3">
+                            <div class="card h-100">
+                                <img :src="video.thumbnail" class="card-img-top" :alt="video.title">
+                                <div class="card-body">
+                                    <h5 class="card-title text-truncate" v-text="video.title"></h5>
+                                    <p class="card-text"><small class="text-muted"
+                                            v-text="formatDate(video.published_at)"></small></p>
+                                    <div class="btn-group w-100">
+                                        <button class="btn btn-sm btn-outline-primary"
+                                            @click="selectVideoForAnalysis(video)">Analyze</button>
+                                        <a :href="'https://www.youtube.com/watch?v=' + video.id" target="_blank"
+                                            class="btn btn-sm btn-outline-danger">Watch</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Video Details Section -->
+        <div v-if="activeTab === 'details'" class="tab-content">
+            <div class="mb-4">
+                <h2>Video Details</h2>
+                <div class="row mb-3">
+                    <div class="col-md-8">
+                        <div class="input-group">
+                            <input type="text" class="form-control" v-model="detailsVideoId"
+                                placeholder="Enter video ID" @keyup.enter="loadVideoDetails">
+                            <button class="btn btn-danger" @click="loadVideoDetails" :disabled="isLoadingDetails">
+                                <span v-if="isLoadingDetails" class="loader me-2"></span>
+                                Load Details
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="videoDetails" class="card">
+                <div class="row g-0">
+                    <div class="col-md-4">
+                        <img :src="'https://img.youtube.com/vi/' + videoDetails.id + '/hqdefault.jpg'"
+                            class="img-fluid rounded-start" :alt="videoDetails.title">
+                    </div>
+                    <div class="col-md-8">
+                        <div class="card-body">
+                            <h3 class="card-title" v-text="videoDetails.title"></h3>
+                            <p class="card-text"><strong>Channel:</strong> <span v-text="videoDetails.channel"></span>
+                            </p>
+                            <p class="card-text"><strong>Published:</strong> <span
+                                    v-text="formatDate(videoDetails.published_at)"></span></p>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <p class="card-text"><strong>Views:</strong> <span
+                                            v-text="formatNumber(videoDetails.view_count)"></span></p>
+                                </div>
+                                <div class="col-md-4">
+                                    <p class="card-text"><strong>Likes:</strong> <span
+                                            v-text="formatNumber(videoDetails.like_count)"></span></p>
+                                </div>
+                                <div class="col-md-4">
+                                    <p class="card-text"><strong>Comments:</strong> <span
+                                            v-text="formatNumber(videoDetails.comment_count)"></span></p>
+                                </div>
+                            </div>
+                            <div class="mt-3">
+                                <button class="btn btn-sm btn-outline-primary me-2"
+                                    @click="switchToAnalyzeTab(videoDetails)">Analyze</button>
+                                <a :href="'https://www.youtube.com/watch?v=' + videoDetails.id" target="_blank"
+                                    class="btn btn-sm btn-outline-danger">Watch on YouTube</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body border-top">
+                    <h4>Description</h4>
+                    <p class="card-text" style="white-space: pre-wrap;" v-text="videoDetails.description"></p>
+                </div>
+                <div v-if="videoDetails.tags && videoDetails.tags.length > 0" class="card-body border-top">
+                    <h4>Tags</h4>
+                    <div>
+                        <span v-for="tag in videoDetails.tags" :key="tag" class="badge bg-secondary me-1 mb-1"
+                            v-text="tag"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="videoComments && videoComments.length > 0" class="mt-4">
+                <h3>Top Comments</h3>
+                <div class="card mb-3" v-for="comment in videoComments" :key="comment.id">
+                    <div class="card-body">
+                        <h5 class="card-title" v-text="comment.author"></h5>
+                        <p class="card-text" v-html="formatComment(comment.text)"></p>
+                        <p class="card-text">
+                            <small class="text-muted">
+                                <span v-text="formatDate(comment.published_at)"></span> ·
+                                <span v-text="formatNumber(comment.like_count)"></span> likes
+                            </small>
+                        </p>
+                    </div>
+                </div>
+                <button v-if="hasMoreComments" class="btn btn-outline-primary mt-2" @click="loadMoreComments">
+                    Load More Comments
+                </button>
+            </div>
+        </div>
+
+        <!-- Transcript Tab -->
+        <div v-if="activeTab === 'transcript'" class="tab-content">
+            <div class="mb-4">
+                <h2>Video Transcript</h2>
+                <div class="row mb-3">
+                    <div class="col-md-8">
+                        <div class="input-group">
+                            <input type="text" class="form-control" v-model="transcriptVideoId"
+                                placeholder="Enter video ID" @keyup.enter="getTranscript">
+                            <button class="btn btn-danger" @click="getTranscript" :disabled="loadingTranscript">
+                                <span v-if="loadingTranscript" class="loader me-2"></span>
+                                Load Transcript
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="!transcript && !loadingTranscript && transcriptVideoId" class="alert alert-info">
+                Enter a video ID and click "Load Transcript" to retrieve the video transcript.
+            </div>
+
+            <div v-if="loadingTranscript" class="text-center mb-3">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p>Loading transcript...</p>
+            </div>
+
+            <div v-if="transcript" class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Video Transcript</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <h6>Analysis Instructions:</h6>
+                        <textarea v-model="transcriptInstruction" class="form-control" rows="3"
+                            placeholder="Enter instructions for Claude to analyze this transcript..."></textarea>
+                    </div>
+                    <div class="mb-3 d-flex justify-content-between">
+                        <button @click="analyzeTranscript" class="btn btn-primary"
+                            :disabled="!transcriptInstruction || isAnalyzingTranscript">
+                            <span v-if="isAnalyzingTranscript">
+                                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                Analyzing...
+                            </span>
+                            <span v-else>Analyze with Claude</span>
+                        </button>
+                        <button @click="saveTranscriptAnalysis" class="btn btn-success"
+                            :disabled="!transcriptAnalysis || savingTranscript">
+                            <span v-if="savingTranscript">
+                                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                Saving...
+                            </span>
+                            <span v-else>Save Analysis</span>
+                        </button>
+                    </div>
+                    <div v-if="transcriptAnalysis" class="mb-3">
+                        <h6>Analysis Results:</h6>
+                        <div class="border p-3 bg-light">
+                            <div v-html="formatAnalysis(transcriptAnalysis)"></div>
+                        </div>
+                    </div>
+                    <h6>Transcript:</h6>
+                    <div class="border p-3 bg-light" style="max-height: 300px; overflow-y: auto;">
+                        <pre style="white-space: pre-wrap;">{{ transcript }}</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Analyze Content Section -->
+        <div v-if="activeTab === 'analyze'" class="tab-content">
+            <div class="row">
+                <div class="col-md-6">
+                    <h2>Analyze Video Content</h2>
+                    <div class="mb-3">
+                        <label class="form-label">Video ID</label>
+                        <input type="text" class="form-control" v-model="analysisVideoId" placeholder="Enter video ID">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Instructions for Claude</label>
+                        <textarea class="form-control" v-model="analysisInstruction" rows="4"
+                            placeholder="E.g., 'Summarize this video content'"></textarea>
+                    </div>
+                    <button class="btn btn-danger" @click="analyzeVideo"
+                        :disabled="isAnalyzing || !analysisVideoId || !analysisInstruction">
+                        <span v-if="isAnalyzing" class="loader me-2"></span>
+                        Analyze Video
+                    </button>
+                </div>
+
+                <div class="col-md-6">
+                    <h2>Analyze Comments</h2>
+                    <div class="mb-3">
+                        <label class="form-label">Video ID</label>
+                        <input type="text" class="form-control" v-model="commentsVideoId" placeholder="Enter video ID">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Instructions for Claude</label>
+                        <textarea class="form-control" v-model="commentsInstruction" rows="4"
+                            placeholder="E.g., 'Analyze sentiment in these comments'"></textarea>
+                    </div>
+                    <button class="btn btn-danger" @click="analyzeComments"
+                        :disabled="isAnalyzingComments || !commentsVideoId || !commentsInstruction">
+                        <span v-if="isAnalyzingComments" class="loader me-2"></span>
+                        Analyze Comments
+                    </button>
+                </div>
+            </div>
+
+            <!-- Analysis Results -->
+            <div v-if="videoAnalysis" class="mt-4">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h3 class="mb-0">Claude's Video Analysis</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <button class="btn btn-sm btn-outline-primary"
+                                @click="saveAnalysis('video', analysisVideoId, analysisInstruction, videoAnalysis)">Save
+                                Analysis</button>
+                        </div>
+                        <div v-html="formatAnalysis(videoAnalysis)"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="commentsAnalysis" class="mt-4">
+                <div class="card">
+                    <div class="card-header bg-success text-white">
+                        <h3 class="mb-0">Claude's Comments Analysis</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <button class="btn btn-sm btn-outline-primary"
+                                @click="saveAnalysis('comments', commentsVideoId, commentsInstruction, commentsAnalysis)">Save
+                                Analysis</button>
+                        </div>
+                        <div v-html="formatAnalysis(commentsAnalysis)"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Analysis History Section -->
+        <div v-if="activeTab === 'history'" class="tab-content">
+            <h2>Analysis History</h2>
+            <div v-if="savedAnalyses.length === 0" class="alert alert-info">
+                No saved analyses yet. Analyze videos or comments and save them to see them here.
+            </div>
+            <div v-else>
+                <div v-for="(analysis, index) in savedAnalyses" :key="index" class="card mb-3">
+                    <div class="card-header" :class="{
+                        'bg-primary text-white': analysis.type === 'video', 
+                        'bg-success text-white': analysis.type === 'comments',
+                        'bg-info text-white': analysis.type === 'transcript'
+                    }">
+                        <div class="d-flex justify-content-between">
+                            <h4 class="mb-0" v-text="
+                                analysis.type === 'video' ? 'Video Analysis' : 
+                                analysis.type === 'comments' ? 'Comments Analysis' : 
+                                'Transcript Analysis'
+                            "></h4>
+                            <div>
+                                <button class="btn btn-sm btn-light" @click="deleteAnalysis(index)">Delete</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <h5>Video ID: <span v-text="analysis.video_id"></span></h5>
+                        <p><strong>Instruction:</strong> <span v-text="analysis.instruction"></span></p>
+                        <p><strong>Date:</strong> <span v-text="formatDate(analysis.created_at)"></span></p>
+                        <button class="btn btn-outline-primary" @click="analysis.expanded = !analysis.expanded">
+                            <span v-text="analysis.expanded ? 'Hide Analysis' : 'Show Analysis'"></span>
+                        </button>
+                        <div v-if="analysis.expanded" class="mt-3">
+                            <div v-html="formatAnalysis(analysis.content)"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Vue
+        new Vue({
+            el: '#app',
+            data: {
+                // Current user (populated from Flask)
+                username: "Logged in as: {{ current_user.username }}",
+                // UI state
+                activeTab: 'search',
+                isLoading: false,
+                isAnalyzing: false,
+                isAnalyzingComments: false,
+                isLoadingDetails: false,
+                // Video search
+                videoSearchQuery: '',
+                videos: [],
+                videoSearchPerformed: false,
+                // Video details
+                detailsVideoId: '',
+                videoDetails: null,
+                videoComments: [],
+                commentsNextPageToken: null,
+                hasMoreComments: false,
+                // Advanced search options
+                searchOptions: {
+                    publishedAfter: '',
+                    videoDuration: '',
+                    order: 'relevance',
+                    maxResults: 10,
+                    customDateFrom: '',
+                    customDateTo: ''
+                },
+                // Video analysis
+                analysisVideoId: '',
+                analysisInstruction: '',
+                videoAnalysis: '',
+                // Comments analysis
+                commentsVideoId: '',
+                commentsInstruction: '',
+                commentsAnalysis: '',
+                // Transcript variables
+                transcriptVideoId: '',
+                transcript: null,
+                loadingTranscript: false,
+                transcriptInstruction: '',
+                transcriptAnalysis: '',
+                isAnalyzingTranscript: false,
+                savingTranscript: false,
+                // Saved analyses
+                savedAnalyses: [],
+
+                // Channel analysis
+                channelSearchQuery: '',
+                channels: [],
+                channelDetails: null,
+                channelVideos: [],
+                isLoadingChannels: false,
+                channelInstruction: '',
+                channelVideoSampleSize: 5,
+                channelAnalysis: '',
+                isAnalyzingChannel: false,
+            },
+            mounted: function () {
+                // Load saved analyses from the database
+                this.loadSavedAnalyses();
+            },
+            
+            watch: {
+                channelAnalysis: function(newVal, oldVal) {
+                    console.log("Channel analysis updated:", newVal ? "Has content" : "Empty");
+                }
+            },    
+
+            methods: {
+                // Video search methods
+                searchVideos: function () {
+                    if (!this.videoSearchQuery) return;
+
+                    this.isLoading = true;
+                    this.videoSearchPerformed = true;
+
+                    // Process date parameters
+                    var publishedAfter = null;
+                    var publishedBefore = null;
+                    var now = new Date();  // Define now here to avoid syntax errors
+
+                    // Check if custom date range is set
+                    if (this.searchOptions.customDateFrom || this.searchOptions.customDateTo) {
+                        if (this.searchOptions.customDateFrom) {
+                            // Add time component to make it start of day
+                            publishedAfter = new Date(this.searchOptions.customDateFrom + 'T00:00:00').toISOString();
+                        }
+
+                        if (this.searchOptions.customDateTo) {
+                            // Add time component to make it end of day
+                            publishedBefore = new Date(this.searchOptions.customDateTo + 'T23:59:59').toISOString();
+                        }
+                    }
+                    // Otherwise use the dropdown selection
+                    else if (this.searchOptions.publishedAfter) {
+                        switch (this.searchOptions.publishedAfter) {
+                            case 'today':
+                                now.setHours(0, 0, 0, 0);
+                                publishedAfter = now.toISOString();
+                                break;
+                            case 'thisWeek':
+                                now.setDate(now.getDate() - 7);
+                                publishedAfter = now.toISOString();
+                                break;
+                            case 'thisMonth':
+                                now.setMonth(now.getMonth() - 1);
+                                publishedAfter = now.toISOString();
+                                break;
+                            case 'thisYear':
+                                now.setFullYear(now.getFullYear() - 1);
+                                publishedAfter = now.toISOString();
+                                break;
+                        }
+                    }
+
+                    var self = this;
+                    axios.post('/api/search', {
+                        query: this.videoSearchQuery,
+                        maxResults: parseInt(this.searchOptions.maxResults),
+                        order: this.searchOptions.order,
+                        videoDuration: this.searchOptions.videoDuration || null,
+                        publishedAfter: publishedAfter,
+                        publishedBefore: publishedBefore
+                    })
+                        .then(function (response) {
+                            self.videos = response.data.videos;
+                        })
+                        .catch(function (error) {
+                            console.error('Error searching videos:', error);
+                            alert('Error searching videos. Please try again.');
+                        })
+                        .finally(function () {
+                            self.isLoading = false;
+                        });
+                },
+
+                // Video details methods
+                loadVideoDetails: function () {
+                    if (!this.detailsVideoId) return;
+
+                    this.isLoadingDetails = true;
+                    this.videoDetails = null;
+                    this.videoComments = [];
+                    this.hasMoreComments = false;
+
+                    var self = this;
+
+                    // Load video details
+                    axios.get('/api/video/' + this.detailsVideoId)
+                        .then(function (response) {
+                            self.videoDetails = response.data.video;
+
+                            // Load video comments
+                            return axios.get('/api/video/' + self.detailsVideoId + '/comments');
+                        })
+                        .then(function (response) {
+                            self.videoComments = response.data.comments;
+                            self.commentsNextPageToken = response.data.nextPageToken;
+                            self.hasMoreComments = self.commentsNextPageToken !== null;
+                        })
+                        .catch(function (error) {
+                            console.error('Error loading video details:', error);
+                            alert('Error loading video details. Please try again.');
+                        })
+                        .finally(function () {
+                            self.isLoadingDetails = false;
+                        });
+                },
+
+                loadMoreComments: function () {
+                    var self = this;
+
+                    axios.get('/api/video/' + this.detailsVideoId + '/comments', {
+                        params: {
+                            pageToken: this.commentsNextPageToken
+                        }
+                    })
+                        .then(function (response) {
+                            self.videoComments = self.videoComments.concat(response.data.comments);
+                            self.commentsNextPageToken = response.data.nextPageToken;
+                            self.hasMoreComments = response.data.nextPageToken !== null;
+                        })
+                        .catch(function (error) {
+                            console.error('Error loading more comments:', error);
+                            alert('Error loading more comments. Please try again.');
+                        });
+                },
+
+                // Transcript methods
+                getTranscript: function () {
+                    if (!this.transcriptVideoId) return;
+
+                    this.loadingTranscript = true;
+                    this.transcript = null;
+
+                    var self = this;
+                    axios.get(`/api/video/${this.transcriptVideoId}/transcript`)
+                        .then(function (response) {
+                            self.transcript = response.data.transcript;
+                        })
+                        .catch(function (error) {
+                            console.error('Error getting transcript:', error);
+                            alert('Error getting transcript');
+                        })
+                        .finally(function () {
+                            self.loadingTranscript = false;
+                        });
+                },
+
+                analyzeTranscript: function () {
+                    if (!this.transcriptVideoId || !this.transcript || !this.transcriptInstruction) return;
+
+                    this.isAnalyzingTranscript = true;
+                    this.transcriptAnalysis = '';
+
+                    var self = this;
+                    axios.post('/api/analyze/transcript', {
+                        video_id: this.transcriptVideoId,
+                        instruction: this.transcriptInstruction
+                    })
+                    .then(function (response) {
+                            self.transcriptAnalysis = response.data.analysis;
+                        })
+                        .catch(function (error) {
+                            console.error('Error analyzing transcript:', error);
+                            alert('Error analyzing transcript');
+                        })
+                        .finally(function () {
+                            self.isAnalyzingTranscript = false;
+                        });
+                },
+
+                saveTranscriptAnalysis: function () {
+                    if (!this.transcriptVideoId || !this.transcriptAnalysis) return;
+
+                    this.savingTranscript = true;
+
+                    var self = this;
+                    axios.post('/api/analyses', {
+                        type: 'transcript',
+                        video_id: this.transcriptVideoId,
+                        instruction: this.transcriptInstruction,
+                        content: this.transcriptAnalysis
+                    })
+                        .then(function (response) {
+                            alert('Analysis saved successfully!');
+                            self.loadSavedAnalyses();
+                        })
+                        .catch(function (error) {
+                            console.error('Error saving analysis:', error);
+                            alert('Error saving analysis');
+                        })
+                        .finally(function () {
+                            self.savingTranscript = false;
+                        });
+                },
+
+                // Analysis methods
+                analyzeVideo: function () {
+                    if (!this.analysisVideoId || !this.analysisInstruction) return;
+
+                    this.isAnalyzing = true;
+                    this.videoAnalysis = '';
+
+                    var self = this;
+                    axios.post('/api/analyze/video', {
+                        video_id: this.analysisVideoId,
+                        instruction: this.analysisInstruction
+                    })
+                        .then(function (response) {
+                            self.videoAnalysis = response.data.analysis;
+                        })
+                        .catch(function (error) {
+                            console.error('Error analyzing video:', error);
+                            alert('Error analyzing video. Please try again.');
+                        })
+                        .finally(function () {
+                            self.isAnalyzing = false;
+                        });
+                },
+
+                analyzeComments: function () {
+                    if (!this.commentsVideoId || !this.commentsInstruction) return;
+
+                    this.isAnalyzingComments = true;
+                    this.commentsAnalysis = '';
+
+                    var self = this;
+                    console.log("Analyzing comments for video ID:", this.commentsVideoId);
+                    console.log("Instruction:", this.commentsInstruction);
+
+                    axios.post('/api/analyze/comments', {
+                        video_id: this.commentsVideoId,
+                        instruction: this.commentsInstruction
+                    })
+                        .then(function (response) {
+                            console.log("Analysis received:", response.data);
+                            self.commentsAnalysis = response.data.analysis;
+                        })
+                        .catch(function (error) {
+                            console.error('Error analyzing comments:', error);
+                            if (error.response) {
+                                console.error('Response status:', error.response.status);
+                                console.error('Response data:', error.response.data);
+                            }
+                            alert('Error analyzing comments: ' + (error.response ? error.response.data.error : error.message));
+                        })
+                        .finally(function () {
+                            self.isAnalyzingComments = false;
+                        });
+                },
+
+                // Saved analyses methods
+                loadSavedAnalyses: function () {
+                    var self = this;
+                    axios.get('/api/analyses')
+                        .then(function (response) {
+                            self.savedAnalyses = response.data.analyses.map(function (a) {
+                                return Object.assign({}, a, { expanded: false });
+                            });
+                        })
+                        .catch(function (error) {
+                            console.error('Error loading analyses:', error);
+                        });
+                },
+
+                saveAnalysis: function (type, videoId, instruction, content) {
+                    var self = this;
+                    axios.post('/api/analyses', {
+                        type: type,
+                        video_id: videoId,
+                        instruction: instruction,
+                        content: content
+                    })
+                        .then(function (response) {
+                            // Add to the beginning of the array with expanded = false
+                            self.savedAnalyses.unshift(
+                                Object.assign({}, response.data.analysis, { expanded: false })
+                            );
+
+                            alert('Analysis saved successfully!');
+                        })
+                        .catch(function (error) {
+                            console.error('Error saving analysis:', error);
+                            alert('Error saving analysis. Please try again.');
+                        });
+                },
+
+                deleteAnalysis: function (index) {
+                    if (confirm('Are you sure you want to delete this analysis?')) {
+                        var analysisId = this.savedAnalyses[index].id;
+                        var self = this;
+
+                        axios.delete('/api/analyses/' + analysisId)
+                            .then(function () {
+                                self.savedAnalyses.splice(index, 1);
+                            })
+                            .catch(function (error) {
+                                console.error('Error deleting analysis:', error);
+                                alert('Error deleting analysis. Please try again.');
+                            });
+                    }
+                },
+
+                // Utility methods
+                copyVideoId: function (videoId) {
+                    navigator.clipboard.writeText(videoId);
+                    alert('Video ID copied to clipboard!');
+                },
+
+                selectVideoForAnalysis: function (video) {
+                    this.detailsVideoId = video.id;
+                    this.analysisVideoId = video.id;
+                    this.commentsVideoId = video.id;
+                    this.transcriptVideoId = video.id;
+
+                    // Set default instructions
+                    this.analysisInstruction = 'Summarize the main points of this video';
+                    this.commentsInstruction = 'Analyze the sentiment in these comments';
+                    this.transcriptInstruction = 'Provide a concise summary of this transcript';
+
+                    // Switch to details tab
+                    this.activeTab = 'details';
+
+                    // Load video details
+                    this.loadVideoDetails();
+                },
+                
+                // Channel methods
+                searchChannels: function () {
+                    if (!this.channelSearchQuery) return;
+
+                    this.isLoadingChannels = true;
+                    this.channels = [];
+
+                    var self = this;
+                    axios.post('/api/search/channels', {
+                        query: this.channelSearchQuery,
+                        maxResults: 5
+                    })
+                        .then(function (response) {
+                            self.channels = response.data.channels;
+                        })
+                        .catch(function (error) {
+                            console.error('Error searching channels:', error);
+                            alert('Error searching channels. Please try again.');
+                        })
+                        .finally(function () {
+                            self.isLoadingChannels = false;
+                        });
+                },
+
+                selectChannelForAnalysis: function (channel) {
+                    this.channelDetails = null;
+                    this.channelVideos = [];
+                    this.channelAnalysis = '';
+
+                    var self = this;
+
+                    // Load channel details
+                    axios.get('/api/channel/' + channel.id)
+                        .then(function (response) {
+                            self.channelDetails = response.data.channel;
+
+                            // Set default instruction
+                            self.channelInstruction = 'Analyze this channel\'s content strategy and audience engagement';
+
+                            // Load channel videos
+                            return axios.get('/api/channel/' + channel.id + '/videos', {
+                                params: { maxResults: 10 }
+                            });
+                        })
+                        .then(function (response) {
+                            self.channelVideos = response.data.videos;
+                        })
+                        .catch(function (error) {
+                            console.error('Error loading channel details:', error);
+                            alert('Error loading channel details. Please try again.');
+                        });
+                },
+
+                analyzeChannel: function () {
+                    if (!this.channelDetails || !this.channelInstruction) return;
+
+                    this.isAnalyzingChannel = true;
+                    this.channelAnalysis = '';
+
+                    var self = this;
+                    axios.post('/api/analyze/channel', {
+                        channel_id: this.channelDetails.id,
+                        instruction: this.channelInstruction,
+                        video_sample_size: parseInt(this.channelVideoSampleSize)
+                    })
+                        .then(function (response) {
+                            self.channelAnalysis = response.data.analysis;
+                        })
+                        .catch(function (error) {
+                            console.error('Error analyzing channel:', error);
+                            alert('Error analyzing channel. Please try again.');
+                        })
+                        .finally(function () {
+                            self.isAnalyzingChannel = false;
+                        });
+                },
+
+                copyChannelId: function (channelId) {
+                    navigator.clipboard.writeText(channelId);
+                    alert('Channel ID copied to clipboard!');
+                },
+
+                switchToAnalyzeTab: function (video) {
+                    this.activeTab = 'analyze';
+                },
+
+                formatAnalysis: function (text) {
+                    // Convert markdown-like formatting to HTML
+                    return text
+                        .replace(/\n\n/g, '<br><br>')
+                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                        .replace(/\n- /g, '<br>• ')
+                        .replace(/\n(\d+)\. /g, '<br>$1. ');
+                },
+
+                formatDate: function (dateString) {
+                    var date = new Date(dateString);
+                    return date.toLocaleString();
+                },
+
+                formatComment: function (text) {
+                    // Replace line breaks with HTML breaks
+                    return text.replace(/\n/g, '<br>');
+                },
+
+                formatNumber: function (num) {
+                    return new Intl.NumberFormat().format(num);
+                }
+            }
+        });
+                    </script>
+    
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    </body>
+    
+    </html>
