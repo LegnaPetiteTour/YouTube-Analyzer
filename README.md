@@ -1,4 +1,4 @@
-# YouTube-Claude Integration
+# TubeMetrics
 
 This application combines the YouTube Data API with Claude's AI capabilities to analyze YouTube videos, search results, and comments.
 

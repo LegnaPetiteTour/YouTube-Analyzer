@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template, redirect, url_for, flash
+from flask import Flask, request, jsonify, render_template, redirect, url_for, flash, session
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from youtube_client import YouTubeClient
 from claude_client import ClaudeClient
@@ -103,8 +103,12 @@ def index():
 @app.route('/api/search', methods=['POST'])
 @login_required
 def search_videos():
+    # Increment search count in session
+    session['search_count'] = session.get('search_count', 0) + 1
+    
+    # Get data from request
     data = request.json
-    query = data.get('query')
+    query = data.get('query')    
     
     if not query:
         return jsonify({'error': 'Query is required'}), 400
@@ -226,6 +230,8 @@ def get_channel_videos(channel_id):
 @app.route('/api/analyze/video', methods=['POST'])
 @login_required
 def analyze_video():
+    # Increment analyses count
+    session['analyses_run'] = session.get('analyses_run', 0) + 1
     data = request.json
     video_id = data.get('video_id')
     instruction = data.get('instruction')
@@ -319,6 +325,8 @@ def save_analysis():
     
     return jsonify({'message': 'Analysis saved successfully', 'analysis': analysis.to_dict()})
 
+
+
 @app.route('/api/analyses/<int:analysis_id>', methods=['DELETE'])
 @login_required
 def delete_analysis(analysis_id):
@@ -333,5 +341,32 @@ def delete_analysis(analysis_id):
     
     return jsonify({'message': 'Analysis deleted successfully'})
 
+@app.route('/api/dashboard-stats', methods=['GET'])
+@login_required
+def get_dashboard_stats():
+    # Get actual stats for the current user
+    user_id = current_user.id
+    
+    # Count saved analyses
+    saved_analyses_count = Analysis.query.filter_by(user_id=user_id).count()
+    
+    # Count video searches (stored in session)
+    video_searches_count = session.get('search_count', 0)
+    
+    # Count analyses run (from session)
+    analyses_run_count = session.get('analyses_run', 0)
+    
+    # Count analyzed channels (if you track this)
+    channels_analyzed_count = session.get('channels_analyzed', 0)
+    
+    return jsonify({
+        'videoSearches': video_searches_count,
+        'analysesRun': analyses_run_count,
+        'savedAnalyses': saved_analyses_count,
+        'channelsAnalyzed': channels_analyzed_count
+    })
+
+
+
 if __name__ == '__main__':
-    app.run(debug=True, port=5002)
+    app.run(debug=True, port=5000)
